@@ -457,28 +457,41 @@ const MovieFormModal = ({ movie, onClose, onSave }: {
 }) => {
   const isEdit = !!movie;
   const [title, setTitle] = useState(movie?.title ?? '');
-  const [genre, setGenre] = useState(movie?.genre ?? ALL_GENRES[0]);
-  const [year, setYear] = useState(String(movie?.year ?? new Date().getFullYear()));
-  const [posterUrl, setPosterUrl] = useState(movie?.poster !== POSTER_1 && movie?.poster !== POSTER_2 && movie?.poster !== POSTER_3 ? (movie?.poster ?? '') : '');
+  const [posterSrc, setPosterSrc] = useState<string>(movie?.poster ?? '');
   const [error, setError] = useState('');
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) { setError('Можно загружать только изображения'); return; }
+    const reader = new FileReader();
+    reader.onload = (ev) => { setPosterSrc(ev.target?.result as string); setError(''); };
+    reader.readAsDataURL(file);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    const file = e.dataTransfer.files?.[0];
+    if (!file || !file.type.startsWith('image/')) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => setPosterSrc(ev.target?.result as string);
+    reader.readAsDataURL(file);
+  };
 
   const handleSave = () => {
     if (!title.trim()) { setError('Введи название фильма'); return; }
-    const yearNum = parseInt(year);
-    if (isNaN(yearNum) || yearNum < 1900 || yearNum > 2030) { setError('Укажи корректный год (1900–2030)'); return; }
     onSave({
       id: movie?.id ?? Date.now(),
       title: title.trim(),
-      genre,
-      year: yearNum,
-      poster: posterUrl.trim() || POSTER_1,
+      genre: movie?.genre ?? ALL_GENRES[0],
+      year: movie?.year ?? new Date().getFullYear(),
+      poster: posterSrc || POSTER_1,
       rating: movie?.rating ?? 0,
       myRatings: movie?.myRatings ?? null,
       review: movie?.review ?? '',
     });
   };
-
-  const previewPoster = posterUrl.trim() || movie?.poster || POSTER_1;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-fade-in" onClick={onClose}>
@@ -494,6 +507,46 @@ const MovieFormModal = ({ movie, onClose, onSave }: {
         </div>
 
         <div className="space-y-4">
+          {/* Poster upload */}
+          <div>
+            <label className="text-xs text-muted-foreground mb-1.5 block font-500 uppercase tracking-wide">
+              Постер <span className="font-400 normal-case">(необязательно)</span>
+            </label>
+            <div
+              onClick={() => fileRef.current?.click()}
+              onDrop={handleDrop}
+              onDragOver={(e) => e.preventDefault()}
+              className="relative cursor-pointer rounded-2xl border-2 border-dashed border-border/60 hover:border-primary/50 transition-colors overflow-hidden"
+              style={{ minHeight: posterSrc ? undefined : '140px' }}
+            >
+              {posterSrc ? (
+                <div className="flex items-center gap-4 p-3">
+                  <img src={posterSrc} alt="poster" className="w-20 h-28 object-cover rounded-xl flex-shrink-0" />
+                  <div className="flex-1">
+                    <p className="text-sm font-500">Постер загружен</p>
+                    <p className="text-muted-foreground text-xs mt-1">Нажми, чтобы заменить</p>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setPosterSrc(''); }}
+                      className="mt-2 text-xs text-destructive hover:underline flex items-center gap-1"
+                    >
+                      <Icon name="Trash2" size={12} /> Удалить постер
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex flex-col items-center justify-center gap-2 py-8 text-muted-foreground">
+                  <div className="w-12 h-12 rounded-xl bg-secondary/80 grid place-items-center">
+                    <Icon name="ImagePlus" size={22} className="text-primary" />
+                  </div>
+                  <p className="text-sm font-500 text-foreground">Загрузить постер</p>
+                  <p className="text-xs">Перетащи файл или нажми сюда</p>
+                  <p className="text-xs opacity-60">JPG, PNG, WEBP до 10 МБ</p>
+                </div>
+              )}
+            </div>
+            <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleFile} />
+          </div>
+
           {/* Title */}
           <div>
             <label className="text-xs text-muted-foreground mb-1.5 block font-500 uppercase tracking-wide">Название *</label>
@@ -505,63 +558,6 @@ const MovieFormModal = ({ movie, onClose, onSave }: {
               className="w-full bg-secondary/60 border border-border/60 rounded-xl px-4 py-3 text-sm text-foreground placeholder:text-muted-foreground outline-none focus:border-primary/50 transition-colors"
             />
           </div>
-
-          {/* Genre + Year */}
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="text-xs text-muted-foreground mb-1.5 block font-500 uppercase tracking-wide">Жанр</label>
-              <div className="relative bg-secondary/60 border border-border/60 rounded-xl px-3 flex items-center">
-                <select
-                  value={genre}
-                  onChange={(e) => setGenre(e.target.value)}
-                  className="w-full bg-transparent outline-none py-3 pr-5 text-sm text-foreground appearance-none cursor-pointer"
-                >
-                  {ALL_GENRES.map((g) => <option key={g} value={g} className="bg-card">{g}</option>)}
-                </select>
-                <Icon name="ChevronDown" size={13} className="text-muted-foreground pointer-events-none absolute right-3" />
-              </div>
-            </div>
-            <div>
-              <label className="text-xs text-muted-foreground mb-1.5 block font-500 uppercase tracking-wide">Год</label>
-              <input
-                type="number"
-                value={year}
-                onChange={(e) => { setYear(e.target.value); setError(''); }}
-                placeholder="2024"
-                className="w-full bg-secondary/60 border border-border/60 rounded-xl px-4 py-3 text-sm text-foreground placeholder:text-muted-foreground outline-none focus:border-primary/50 transition-colors"
-              />
-            </div>
-          </div>
-
-          {/* Poster URL */}
-          <div>
-            <label className="text-xs text-muted-foreground mb-1.5 block font-500 uppercase tracking-wide">
-              Ссылка на постер <span className="font-400 normal-case">(необязательно)</span>
-            </label>
-            <input
-              value={posterUrl}
-              onChange={(e) => setPosterUrl(e.target.value)}
-              placeholder="https://..."
-              className="w-full bg-secondary/60 border border-border/60 rounded-xl px-4 py-3 text-sm text-foreground placeholder:text-muted-foreground outline-none focus:border-primary/50 transition-colors"
-            />
-            <p className="text-muted-foreground text-xs mt-1.5">Прямую ссылку на постер можно взять с Кинопоиска</p>
-          </div>
-
-          {/* Preview */}
-          {(title || posterUrl) && (
-            <div className="flex items-center gap-4 p-3 bg-secondary/40 rounded-xl border border-border/40">
-              <img
-                src={previewPoster}
-                alt="preview"
-                className="w-14 h-20 object-cover rounded-lg flex-shrink-0"
-                onError={(e) => { (e.target as HTMLImageElement).src = POSTER_1; }}
-              />
-              <div>
-                <p className="font-600 text-sm">{title || 'Название фильма'}</p>
-                <p className="text-muted-foreground text-xs mt-0.5">{genre} · {year}</p>
-              </div>
-            </div>
-          )}
 
           {error && (
             <div className="flex items-center gap-2 text-destructive text-sm">
