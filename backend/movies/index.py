@@ -35,10 +35,16 @@ def handler(event: dict, context) -> dict:
         return {'statusCode': 200, 'headers': CORS, 'body': ''}
 
     method = event.get('httpMethod', 'GET')
-    path = event.get('path', '/')
-    # id из пути /movies/123
-    parts = [p for p in path.split('/') if p]
-    movie_id = int(parts[-1]) if parts and parts[-1].isdigit() else None
+    # id из query (?id=123) или из пути /movies/123
+    params = event.get('queryStringParameters') or {}
+    movie_id = None
+    if params.get('id') and str(params['id']).isdigit():
+        movie_id = int(params['id'])
+    else:
+        path = event.get('path', '/')
+        parts = [p for p in path.split('/') if p]
+        if parts and parts[-1].isdigit():
+            movie_id = int(parts[-1])
 
     conn = get_conn()
     cur = conn.cursor()
@@ -55,6 +61,8 @@ def handler(event: dict, context) -> dict:
             return {'statusCode': 200, 'headers': CORS, 'body': json.dumps(movies, ensure_ascii=False)}
 
         body = json.loads(event.get('body') or '{}')
+        if movie_id is None and body.get('id'):
+            movie_id = int(body['id'])
 
         # POST /movies — создать фильм
         if method == 'POST':

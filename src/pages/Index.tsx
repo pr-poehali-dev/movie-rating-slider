@@ -48,7 +48,7 @@ const avg = (r: Ratings) => Math.round(((r.quality + r.plot + r.characters + r.a
 
 function ratingColor(v: number) {
   if (v >= 8) return 'hsl(142 71% 48%)';
-  if (v >= 5) return 'hsl(210 100% 66%)';
+  if (v >= 5) return 'hsl(272 88% 68%)';
   return 'hsl(0 84% 62%)';
 }
 
@@ -109,41 +109,60 @@ const Index = () => {
   const saveRating = async () => {
     if (!active) return;
     const updated = { ...active, myRatings: { ...draft }, review: draftReview };
-    await fetch(`${API}/${active.id}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(updated),
-    });
     setMovies((prev) => prev.map((m) => m.id === active.id ? updated : m));
     setActive(null);
+    try {
+      await fetch(`${API}?id=${active.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updated),
+      });
+    } catch (e) {
+      console.error('saveRating failed', e);
+    }
   };
 
   const addMovie = async (m: Movie) => {
-    const res = await fetch(API, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(m),
-    });
-    const { id } = await res.json();
-    setMovies((prev) => [{ ...m, id }, ...prev]);
     setShowAdd(false);
+    const tempId = Date.now();
+    setMovies((prev) => [{ ...m, id: tempId }, ...prev]);
+    try {
+      const res = await fetch(API, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(m),
+      });
+      const { id } = await res.json();
+      setMovies((prev) => prev.map((x) => x.id === tempId ? { ...x, id } : x));
+    } catch (e) {
+      console.error('addMovie failed', e);
+    }
   };
 
   const saveEdit = async (updated: Movie) => {
-    await fetch(`${API}/${updated.id}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(updated),
-    });
     setMovies((prev) => prev.map((m) => m.id === updated.id ? updated : m));
     setEditTarget(null);
+    try {
+      await fetch(`${API}?id=${updated.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updated),
+      });
+    } catch (e) {
+      console.error('saveEdit failed', e);
+    }
   };
 
   const confirmDelete = async () => {
     if (!deleteTarget) return;
-    await fetch(`${API}/${deleteTarget.id}`, { method: 'DELETE' });
-    setMovies((prev) => prev.filter((m) => m.id !== deleteTarget.id));
+    const id = deleteTarget.id;
+    setMovies((prev) => prev.filter((m) => m.id !== id));
     setDeleteTarget(null);
+    try {
+      await fetch(`${API}?id=${id}`, { method: 'DELETE' });
+    } catch (e) {
+      console.error('confirmDelete failed', e);
+    }
   };
 
   return (
@@ -157,7 +176,7 @@ const Index = () => {
               <Icon name="Film" size={20} className="text-primary-foreground" />
             </div>
             <span className="font-display text-2xl font-700 tracking-tight">
-              КИНО<span className="text-gradient">БАЛЛ</span>
+              Р<span className="text-gradient">ЗТ</span>
             </span>
           </div>
 
@@ -463,7 +482,7 @@ const RateModal = ({ movie, draft, review, setDraft, setReview, onClose, onSave 
                 value={draft[c.key]}
                 onChange={(e) => setDraft({ ...draft, [c.key]: Number(e.target.value) })}
                 className="rating-slider"
-                style={{ background: `linear-gradient(90deg, ${ratingColor(draft[c.key])} ${((draft[c.key] - 1) / 9) * 100}%, hsl(224 28% 13%) ${((draft[c.key] - 1) / 9) * 100}%)` }}
+                style={{ background: `linear-gradient(90deg, ${ratingColor(draft[c.key])} ${((draft[c.key] - 1) / 9) * 100}%, hsl(246 30% 16%) ${((draft[c.key] - 1) / 9) * 100}%)` }}
               />
             </div>
           ))}
