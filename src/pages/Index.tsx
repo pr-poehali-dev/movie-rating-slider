@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef, useEffect } from 'react';
 import Icon from '@/components/ui/icon';
 
 type Criteria = 'quality' | 'plot' | 'characters' | 'atmosphere';
@@ -61,7 +61,7 @@ function ratingColor(v: number) {
 
 const EMPTY_RATINGS: Ratings = { quality: 7, plot: 7, characters: 7, atmosphere: 7 };
 
-/* ─── Main ─── */
+/* ═══════════════════ Main ═══════════════════ */
 const Index = () => {
   const [tab, setTab] = useState<Tab>('home');
   const [movies, setMovies] = useState<Movie[]>(initialMovies);
@@ -69,11 +69,15 @@ const Index = () => {
   const [genre, setGenre] = useState('Все жанры');
   const [year, setYear] = useState('Все годы');
 
+  // rate modal
   const [active, setActive] = useState<Movie | null>(null);
   const [draft, setDraft] = useState<Ratings>(EMPTY_RATINGS);
   const [draftReview, setDraftReview] = useState('');
 
+  // add / edit / delete
   const [showAdd, setShowAdd] = useState(false);
+  const [editTarget, setEditTarget] = useState<Movie | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Movie | null>(null);
 
   const years = useMemo(
     () => ['Все годы', ...Array.from(new Set(movies.map((m) => m.year))).sort((a, b) => b - a).map(String)],
@@ -100,21 +104,27 @@ const Index = () => {
 
   const saveRating = () => {
     if (!active) return;
-    setMovies((prev) =>
-      prev.map((m) => m.id === active.id ? { ...m, myRatings: { ...draft }, review: draftReview } : m)
-    );
+    setMovies((prev) => prev.map((m) => m.id === active.id ? { ...m, myRatings: { ...draft }, review: draftReview } : m));
     setActive(null);
   };
 
-  const addMovie = (m: Movie) => {
-    setMovies((prev) => [m, ...prev]);
-    setShowAdd(false);
+  const addMovie = (m: Movie) => { setMovies((prev) => [m, ...prev]); setShowAdd(false); };
+
+  const saveEdit = (updated: Movie) => {
+    setMovies((prev) => prev.map((m) => m.id === updated.id ? updated : m));
+    setEditTarget(null);
+  };
+
+  const confirmDelete = () => {
+    if (!deleteTarget) return;
+    setMovies((prev) => prev.filter((m) => m.id !== deleteTarget.id));
+    setDeleteTarget(null);
   };
 
   return (
     <div className="min-h-screen pb-24">
 
-      {/* Header */}
+      {/* ── Header ── */}
       <header className="sticky top-0 z-30 glass border-b border-border/60">
         <div className="container flex items-center justify-between h-16">
           <div className="flex items-center gap-2.5">
@@ -135,8 +145,7 @@ const Index = () => {
                   tab === n.id ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'
                 }`}
               >
-                <Icon name={n.icon} size={15} />
-                {n.label}
+                <Icon name={n.icon} size={15} />{n.label}
               </button>
             ))}
           </nav>
@@ -150,7 +159,7 @@ const Index = () => {
         </div>
       </header>
 
-      {/* Hero */}
+      {/* ── Hero ── */}
       {tab === 'home' && (
         <section className="container pt-16 pb-10 animate-fade-in">
           <p className="text-primary font-600 tracking-widest text-sm mb-4 uppercase">Оценивай кино как критик</p>
@@ -158,7 +167,7 @@ const Index = () => {
             Каждый фильм заслуживает <span className="text-gradient">честного балла</span>
           </h1>
           <p className="text-muted-foreground text-lg mt-6 max-w-xl">
-            Оценивай по 4 критериям, пиши рецензии и добавляй любые фильмы в свою коллекцию.
+            Оценивай по 4 критериям, пиши рецензии, добавляй и редактируй фильмы в своей коллекции.
           </p>
         </section>
       )}
@@ -174,7 +183,7 @@ const Index = () => {
         </section>
       )}
 
-      {/* Search */}
+      {/* ── Search ── */}
       <section className="container pt-8">
         <div className="glass rounded-2xl border border-border/60 p-3 flex flex-col md:flex-row gap-3">
           <div className="flex items-center gap-3 flex-1 bg-secondary/60 rounded-xl px-4">
@@ -191,11 +200,9 @@ const Index = () => {
         </div>
       </section>
 
-      {/* Grid */}
+      {/* ── Grid ── */}
       <section className="container pt-8">
-        {tab === 'top' && filtered.length >= 3 && (
-          <Podium movies={filtered.slice(0, 3)} onRate={openRate} />
-        )}
+        {tab === 'top' && filtered.length >= 3 && <Podium movies={filtered.slice(0, 3)} onRate={openRate} />}
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-5 mt-6">
           {filtered.map((m, i) => (
             <MovieCard
@@ -203,6 +210,8 @@ const Index = () => {
               movie={m}
               rank={tab === 'top' ? i + 1 : undefined}
               onRate={() => openRate(m)}
+              onEdit={() => setEditTarget(m)}
+              onDelete={() => setDeleteTarget(m)}
             />
           ))}
         </div>
@@ -228,38 +237,31 @@ const Index = () => {
           <button
             key={n.id}
             onClick={() => setTab(n.id)}
-            className={`flex-1 flex flex-col items-center gap-1 py-3 text-xs ${
-              tab === n.id ? 'text-primary' : 'text-muted-foreground'
-            }`}
+            className={`flex-1 flex flex-col items-center gap-1 py-3 text-xs ${tab === n.id ? 'text-primary' : 'text-muted-foreground'}`}
           >
-            <Icon name={n.icon} size={20} />
-            {n.label}
+            <Icon name={n.icon} size={20} />{n.label}
           </button>
         ))}
       </nav>
 
-      {/* Rate Modal */}
+      {/* Modals */}
       {active && (
         <RateModal
-          movie={active}
-          draft={draft}
-          review={draftReview}
-          setDraft={setDraft}
-          setReview={setDraftReview}
-          onClose={() => setActive(null)}
-          onSave={saveRating}
+          movie={active} draft={draft} review={draftReview}
+          setDraft={setDraft} setReview={setDraftReview}
+          onClose={() => setActive(null)} onSave={saveRating}
         />
       )}
-
-      {/* Add Movie Modal */}
-      {showAdd && (
-        <AddMovieModal onClose={() => setShowAdd(false)} onAdd={addMovie} />
+      {showAdd && <MovieFormModal onClose={() => setShowAdd(false)} onSave={addMovie} />}
+      {editTarget && <MovieFormModal movie={editTarget} onClose={() => setEditTarget(null)} onSave={saveEdit} />}
+      {deleteTarget && (
+        <DeleteModal movie={deleteTarget} onClose={() => setDeleteTarget(null)} onConfirm={confirmDelete} />
       )}
     </div>
   );
 };
 
-/* ─── Dropdown ─── */
+/* ═══════════════════ Dropdown ═══════════════════ */
 const Dropdown = ({ icon, value, options, onChange }: {
   icon: string; value: string; options: string[]; onChange: (v: string) => void;
 }) => (
@@ -276,27 +278,77 @@ const Dropdown = ({ icon, value, options, onChange }: {
   </div>
 );
 
-/* ─── MovieCard ─── */
-const MovieCard = ({ movie, rank, onRate }: { movie: Movie; rank?: number; onRate: () => void }) => {
+/* ═══════════════════ MovieCard ═══════════════════ */
+const MovieCard = ({ movie, rank, onRate, onEdit, onDelete }: {
+  movie: Movie; rank?: number;
+  onRate: () => void; onEdit: () => void; onDelete: () => void;
+}) => {
   const myAvg = movie.myRatings ? avg(movie.myRatings) : null;
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [menuOpen]);
+
   return (
     <div className="group rounded-2xl overflow-hidden bg-card border border-border/50 hover:border-primary/40 transition-all duration-300 hover:-translate-y-1 animate-fade-in">
       <div className="relative aspect-[2/3] overflow-hidden">
-        <img
-          src={movie.poster}
-          alt={movie.title}
-          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-        />
+        <img src={movie.poster} alt={movie.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
         <div className="absolute inset-0 bg-gradient-to-t from-card via-card/10 to-transparent" />
+
+        {/* Rank badge */}
         {rank && (
           <div className="absolute top-3 left-3 w-8 h-8 rounded-lg bg-primary text-primary-foreground grid place-items-center font-display font-700 text-lg">
             {rank}
           </div>
         )}
+
+        {/* Rating badge */}
         <div className="absolute top-3 right-3 flex items-center gap-1 glass px-2.5 py-1 rounded-lg">
           <Icon name="Star" size={12} className="text-accent" fill="currentColor" />
           <span className="font-600 text-xs tabular-nums">{movie.rating > 0 ? movie.rating.toFixed(1) : '—'}</span>
         </div>
+
+        {/* Context menu button — visible on hover */}
+        <div ref={menuRef} className="absolute bottom-3 right-3">
+          <button
+            onClick={(e) => { e.stopPropagation(); setMenuOpen((v) => !v); }}
+            className="opacity-0 group-hover:opacity-100 transition-opacity glass w-8 h-8 rounded-lg grid place-items-center hover:bg-secondary/80"
+          >
+            <Icon name="MoreVertical" size={15} className="text-foreground" />
+          </button>
+          {menuOpen && (
+            <div className="absolute bottom-10 right-0 w-44 glass-card border border-border/60 rounded-xl overflow-hidden shadow-xl z-20 animate-fade-in">
+              <button
+                onClick={() => { setMenuOpen(false); onEdit(); }}
+                className="w-full flex items-center gap-2.5 px-4 py-3 text-sm hover:bg-secondary/60 transition-colors text-left"
+              >
+                <Icon name="Pencil" size={14} className="text-primary" /> Редактировать
+              </button>
+              <button
+                onClick={() => { setMenuOpen(false); onRate(); }}
+                className="w-full flex items-center gap-2.5 px-4 py-3 text-sm hover:bg-secondary/60 transition-colors text-left"
+              >
+                <Icon name="SlidersHorizontal" size={14} className="text-accent" /> Оценить
+              </button>
+              <div className="border-t border-border/40 mx-3" />
+              <button
+                onClick={() => { setMenuOpen(false); onDelete(); }}
+                className="w-full flex items-center gap-2.5 px-4 py-3 text-sm hover:bg-destructive/10 transition-colors text-left text-destructive"
+              >
+                <Icon name="Trash2" size={14} /> Удалить
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* Review badge */}
         {movie.review && (
           <div className="absolute bottom-3 left-3">
             <div className="glass px-2 py-1 rounded-md flex items-center gap-1">
@@ -306,6 +358,7 @@ const MovieCard = ({ movie, rank, onRate }: { movie: Movie; rank?: number; onRat
           </div>
         )}
       </div>
+
       <div className="p-4">
         <h3 className="font-display text-[17px] font-600 leading-tight truncate">{movie.title}</h3>
         <p className="text-muted-foreground text-xs mt-1">{movie.genre} · {movie.year}</p>
@@ -327,39 +380,23 @@ const MovieCard = ({ movie, rank, onRate }: { movie: Movie; rank?: number; onRat
   );
 };
 
-/* ─── Rate Modal ─── */
+/* ═══════════════════ Rate Modal ═══════════════════ */
 const RateModal = ({ movie, draft, review, setDraft, setReview, onClose, onSave }: {
-  movie: Movie;
-  draft: Ratings;
-  review: string;
-  setDraft: (r: Ratings) => void;
-  setReview: (s: string) => void;
-  onClose: () => void;
-  onSave: () => void;
+  movie: Movie; draft: Ratings; review: string;
+  setDraft: (r: Ratings) => void; setReview: (s: string) => void;
+  onClose: () => void; onSave: () => void;
 }) => {
   const total = avg(draft);
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-fade-in overflow-y-auto"
-      onClick={onClose}
-    >
-      <div
-        className="glass-card border border-border/60 rounded-3xl p-7 max-w-lg w-full my-6 shadow-2xl"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Header */}
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-fade-in overflow-y-auto" onClick={onClose}>
+      <div className="glass-card border border-border/60 rounded-3xl p-7 max-w-lg w-full my-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
         <div className="flex gap-4 mb-7">
           <img src={movie.poster} alt={movie.title} className="w-20 h-28 object-cover rounded-xl flex-shrink-0" />
           <div className="flex-1 min-w-0">
             <h3 className="font-display text-2xl font-600 leading-tight">{movie.title}</h3>
             <p className="text-muted-foreground text-sm mt-1">{movie.genre} · {movie.year}</p>
             <div className="mt-3 flex items-baseline gap-2">
-              <span
-                className="font-display text-5xl font-700 tabular-nums leading-none"
-                style={{ color: ratingColor(total) }}
-              >
-                {total.toFixed(1)}
-              </span>
+              <span className="font-display text-5xl font-700 tabular-nums leading-none" style={{ color: ratingColor(total) }}>{total.toFixed(1)}</span>
               <span className="text-muted-foreground text-sm">средний балл</span>
             </div>
           </div>
@@ -368,19 +405,14 @@ const RateModal = ({ movie, draft, review, setDraft, setReview, onClose, onSave 
           </button>
         </div>
 
-        {/* Criteria sliders */}
         <div className="space-y-5 mb-7">
           {CRITERIA.map((c) => (
             <div key={c.key}>
               <div className="flex items-center justify-between mb-2">
                 <span className="flex items-center gap-2 text-sm font-500">
-                  <Icon name={c.icon} size={15} className="text-primary" />
-                  {c.label}
+                  <Icon name={c.icon} size={15} className="text-primary" />{c.label}
                 </span>
-                <span
-                  className="font-display text-xl font-700 tabular-nums w-7 text-right"
-                  style={{ color: ratingColor(draft[c.key]) }}
-                >
+                <span className="font-display text-xl font-700 tabular-nums w-7 text-right" style={{ color: ratingColor(draft[c.key]) }}>
                   {draft[c.key]}
                 </span>
               </div>
@@ -389,35 +421,29 @@ const RateModal = ({ movie, draft, review, setDraft, setReview, onClose, onSave 
                 value={draft[c.key]}
                 onChange={(e) => setDraft({ ...draft, [c.key]: Number(e.target.value) })}
                 className="rating-slider"
-                style={{
-                  background: `linear-gradient(90deg, ${ratingColor(draft[c.key])} ${((draft[c.key] - 1) / 9) * 100}%, hsl(224 28% 13%) ${((draft[c.key] - 1) / 9) * 100}%)`,
-                }}
+                style={{ background: `linear-gradient(90deg, ${ratingColor(draft[c.key])} ${((draft[c.key] - 1) / 9) * 100}%, hsl(224 28% 13%) ${((draft[c.key] - 1) / 9) * 100}%)` }}
               />
             </div>
           ))}
         </div>
 
-        {/* Review */}
         <div className="mb-7">
           <label className="flex items-center gap-2 text-sm font-500 mb-3">
             <Icon name="FileText" size={15} className="text-primary" />
-            Рецензия
-            <span className="text-muted-foreground font-400 ml-1">(необязательно)</span>
+            Рецензия <span className="text-muted-foreground font-400 ml-1">(необязательно)</span>
           </label>
           <textarea
             value={review}
             onChange={(e) => setReview(e.target.value)}
             placeholder="Напиши пару слов о фильме — что понравилось, что нет..."
             rows={4}
+            maxLength={500}
             className="w-full bg-secondary/50 border border-border/60 rounded-xl px-4 py-3 text-sm text-foreground placeholder:text-muted-foreground outline-none resize-none focus:border-primary/50 transition-colors"
           />
           <p className="text-muted-foreground text-xs mt-1.5 text-right">{review.length} / 500</p>
         </div>
 
-        <button
-          onClick={onSave}
-          className="w-full bg-primary text-primary-foreground font-600 py-3.5 rounded-xl hover:opacity-90 transition-opacity glow-sm"
-        >
+        <button onClick={onSave} className="w-full bg-primary text-primary-foreground font-600 py-3.5 rounded-xl hover:opacity-90 transition-opacity glow-sm">
           Сохранить оценку
         </button>
       </div>
@@ -425,46 +451,42 @@ const RateModal = ({ movie, draft, review, setDraft, setReview, onClose, onSave 
   );
 };
 
-/* ─── Add Movie Modal ─── */
-const AddMovieModal = ({ onClose, onAdd }: {
-  onClose: () => void;
-  onAdd: (m: Movie) => void;
+/* ═══════════════════ Movie Form Modal (Add & Edit) ═══════════════════ */
+const MovieFormModal = ({ movie, onClose, onSave }: {
+  movie?: Movie; onClose: () => void; onSave: (m: Movie) => void;
 }) => {
-  const [title, setTitle] = useState('');
-  const [genre, setGenre] = useState(ALL_GENRES[0]);
-  const [year, setYear] = useState(String(new Date().getFullYear()));
-  const [posterUrl, setPosterUrl] = useState('');
+  const isEdit = !!movie;
+  const [title, setTitle] = useState(movie?.title ?? '');
+  const [genre, setGenre] = useState(movie?.genre ?? ALL_GENRES[0]);
+  const [year, setYear] = useState(String(movie?.year ?? new Date().getFullYear()));
+  const [posterUrl, setPosterUrl] = useState(movie?.poster !== POSTER_1 && movie?.poster !== POSTER_2 && movie?.poster !== POSTER_3 ? (movie?.poster ?? '') : '');
   const [error, setError] = useState('');
 
-  const handleAdd = () => {
+  const handleSave = () => {
     if (!title.trim()) { setError('Введи название фильма'); return; }
     const yearNum = parseInt(year);
     if (isNaN(yearNum) || yearNum < 1900 || yearNum > 2030) { setError('Укажи корректный год (1900–2030)'); return; }
-    onAdd({
-      id: Date.now(),
+    onSave({
+      id: movie?.id ?? Date.now(),
       title: title.trim(),
       genre,
       year: yearNum,
       poster: posterUrl.trim() || POSTER_1,
-      rating: 0,
-      myRatings: null,
-      review: '',
+      rating: movie?.rating ?? 0,
+      myRatings: movie?.myRatings ?? null,
+      review: movie?.review ?? '',
     });
   };
 
+  const previewPoster = posterUrl.trim() || movie?.poster || POSTER_1;
+
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-fade-in"
-      onClick={onClose}
-    >
-      <div
-        className="glass-card border border-border/60 rounded-3xl p-7 max-w-md w-full shadow-2xl"
-        onClick={(e) => e.stopPropagation()}
-      >
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-fade-in" onClick={onClose}>
+      <div className="glass-card border border-border/60 rounded-3xl p-7 max-w-md w-full shadow-2xl" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h3 className="font-display text-2xl font-600">Добавить фильм</h3>
-            <p className="text-muted-foreground text-sm mt-0.5">Заполни данные о фильме вручную</p>
+            <h3 className="font-display text-2xl font-600">{isEdit ? 'Редактировать фильм' : 'Добавить фильм'}</h3>
+            <p className="text-muted-foreground text-sm mt-0.5">{isEdit ? 'Измени данные и сохрани' : 'Заполни данные о фильме'}</p>
           </div>
           <button onClick={onClose} className="text-muted-foreground hover:text-foreground">
             <Icon name="X" size={22} />
@@ -474,9 +496,7 @@ const AddMovieModal = ({ onClose, onAdd }: {
         <div className="space-y-4">
           {/* Title */}
           <div>
-            <label className="text-xs text-muted-foreground mb-1.5 block font-500 uppercase tracking-wide">
-              Название фильма *
-            </label>
+            <label className="text-xs text-muted-foreground mb-1.5 block font-500 uppercase tracking-wide">Название *</label>
             <input
               autoFocus
               value={title}
@@ -486,7 +506,7 @@ const AddMovieModal = ({ onClose, onAdd }: {
             />
           </div>
 
-          {/* Genre + Year row */}
+          {/* Genre + Year */}
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="text-xs text-muted-foreground mb-1.5 block font-500 uppercase tracking-wide">Жанр</label>
@@ -502,7 +522,7 @@ const AddMovieModal = ({ onClose, onAdd }: {
               </div>
             </div>
             <div>
-              <label className="text-xs text-muted-foreground mb-1.5 block font-500 uppercase tracking-wide">Год выпуска</label>
+              <label className="text-xs text-muted-foreground mb-1.5 block font-500 uppercase tracking-wide">Год</label>
               <input
                 type="number"
                 value={year}
@@ -516,8 +536,7 @@ const AddMovieModal = ({ onClose, onAdd }: {
           {/* Poster URL */}
           <div>
             <label className="text-xs text-muted-foreground mb-1.5 block font-500 uppercase tracking-wide">
-              Ссылка на постер
-              <span className="ml-1 font-400 normal-case">(необязательно)</span>
+              Ссылка на постер <span className="font-400 normal-case">(необязательно)</span>
             </label>
             <input
               value={posterUrl}
@@ -525,18 +544,16 @@ const AddMovieModal = ({ onClose, onAdd }: {
               placeholder="https://..."
               className="w-full bg-secondary/60 border border-border/60 rounded-xl px-4 py-3 text-sm text-foreground placeholder:text-muted-foreground outline-none focus:border-primary/50 transition-colors"
             />
-            <p className="text-muted-foreground text-xs mt-1.5">
-              Можно взять прямую ссылку на постер с Кинопоиска или любого сайта
-            </p>
+            <p className="text-muted-foreground text-xs mt-1.5">Прямую ссылку на постер можно взять с Кинопоиска</p>
           </div>
 
           {/* Preview */}
-          {(posterUrl || title) && (
+          {(title || posterUrl) && (
             <div className="flex items-center gap-4 p-3 bg-secondary/40 rounded-xl border border-border/40">
               <img
-                src={posterUrl || POSTER_1}
+                src={previewPoster}
                 alt="preview"
-                className="w-14 h-20 object-cover rounded-lg"
+                className="w-14 h-20 object-cover rounded-lg flex-shrink-0"
                 onError={(e) => { (e.target as HTMLImageElement).src = POSTER_1; }}
               />
               <div>
@@ -548,8 +565,7 @@ const AddMovieModal = ({ onClose, onAdd }: {
 
           {error && (
             <div className="flex items-center gap-2 text-destructive text-sm">
-              <Icon name="AlertCircle" size={15} />
-              {error}
+              <Icon name="AlertCircle" size={15} />{error}
             </div>
           )}
         </div>
@@ -562,10 +578,10 @@ const AddMovieModal = ({ onClose, onAdd }: {
             Отмена
           </button>
           <button
-            onClick={handleAdd}
+            onClick={handleSave}
             className="flex-1 py-3 rounded-xl bg-primary text-primary-foreground text-sm font-600 hover:opacity-90 transition-opacity glow-sm"
           >
-            Добавить в коллекцию
+            {isEdit ? 'Сохранить изменения' : 'Добавить в коллекцию'}
           </button>
         </div>
       </div>
@@ -573,7 +589,39 @@ const AddMovieModal = ({ onClose, onAdd }: {
   );
 };
 
-/* ─── Podium ─── */
+/* ═══════════════════ Delete Confirm Modal ═══════════════════ */
+const DeleteModal = ({ movie, onClose, onConfirm }: {
+  movie: Movie; onClose: () => void; onConfirm: () => void;
+}) => (
+  <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-fade-in" onClick={onClose}>
+    <div className="glass-card border border-border/60 rounded-3xl p-7 max-w-sm w-full shadow-2xl" onClick={(e) => e.stopPropagation()}>
+      <div className="w-14 h-14 rounded-2xl bg-destructive/15 grid place-items-center mx-auto mb-5">
+        <Icon name="Trash2" size={26} className="text-destructive" />
+      </div>
+      <h3 className="font-display text-2xl font-600 text-center mb-2">Удалить фильм?</h3>
+      <p className="text-muted-foreground text-sm text-center mb-1">
+        Фильм <span className="text-foreground font-600">«{movie.title}»</span> будет удалён из коллекции.
+      </p>
+      <p className="text-muted-foreground text-xs text-center mb-7">Оценки и рецензия тоже удалятся.</p>
+      <div className="flex gap-3">
+        <button
+          onClick={onClose}
+          className="flex-1 py-3 rounded-xl border border-border/60 text-muted-foreground text-sm font-500 hover:text-foreground hover:border-border transition-colors"
+        >
+          Отмена
+        </button>
+        <button
+          onClick={onConfirm}
+          className="flex-1 py-3 rounded-xl bg-destructive text-white text-sm font-600 hover:opacity-90 transition-opacity"
+        >
+          Удалить
+        </button>
+      </div>
+    </div>
+  </div>
+);
+
+/* ═══════════════════ Podium ═══════════════════ */
 const Podium = ({ movies, onRate }: { movies: Movie[]; onRate: (m: Movie) => void }) => (
   <div className="grid grid-cols-3 gap-4 items-end">
     {[1, 0, 2].map((idx, pos) => {
@@ -584,9 +632,7 @@ const Podium = ({ movies, onRate }: { movies: Movie[]; onRate: (m: Movie) => voi
       return (
         <div key={m.id} className="flex flex-col items-center animate-fade-in">
           <img
-            src={m.poster}
-            alt={m.title}
-            onClick={() => onRate(m)}
+            src={m.poster} alt={m.title} onClick={() => onRate(m)}
             className="w-full max-w-[150px] aspect-[2/3] object-cover rounded-2xl border border-border cursor-pointer hover:border-primary/60 transition-colors"
           />
           <p className="font-display font-600 mt-3 text-center text-sm truncate w-full">{m.title}</p>
