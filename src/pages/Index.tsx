@@ -1,5 +1,7 @@
-import { useState, useMemo, useRef, useEffect } from 'react';
+import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import Icon from '@/components/ui/icon';
+
+const API = 'https://functions.poehali.dev/dd761295-606f-4837-8f0d-df2232766f43';
 
 type Criteria = 'quality' | 'plot' | 'characters' | 'atmosphere';
 
@@ -34,15 +36,6 @@ const CRITERIA: { key: Criteria; label: string; icon: string }[] = [
 
 const ALL_GENRES = ['Фантастика', 'Драма', 'Триллер', 'Комедия', 'Боевик', 'Ужасы', 'Анимация', 'Документальный'];
 
-const initialMovies: Movie[] = [
-  { id: 1, title: 'Призрак Ориона', genre: 'Фантастика', year: 2024, poster: POSTER_1, rating: 8.7, myRatings: { quality: 9, plot: 8, characters: 9, atmosphere: 10 }, review: 'Захватывающий визуальный опыт. Сценарий не без дыр, но атмосфера с лихвой компенсирует.' },
-  { id: 2, title: 'Город закатов', genre: 'Драма', year: 2023, poster: POSTER_2, rating: 9.2, myRatings: { quality: 10, plot: 10, characters: 9, atmosphere: 10 }, review: 'Безупречная драма о потере и возрождении. Финал разрывает сердце.' },
-  { id: 3, title: 'Дождь над Невой', genre: 'Триллер', year: 2025, poster: POSTER_3, rating: 8.1, myRatings: null, review: '' },
-  { id: 4, title: 'Тёмная материя', genre: 'Фантастика', year: 2022, poster: POSTER_1, rating: 7.9, myRatings: { quality: 8, plot: 7, characters: 8, atmosphere: 9 }, review: 'Хорошая идея, слабая реализация второго акта, но в целом смотрится.' },
-  { id: 5, title: 'Последний кадр', genre: 'Драма', year: 2024, poster: POSTER_2, rating: 8.4, myRatings: null, review: '' },
-  { id: 6, title: 'Полночный экспресс', genre: 'Триллер', year: 2023, poster: POSTER_3, rating: 9.0, myRatings: { quality: 9, plot: 9, characters: 8, atmosphere: 10 }, review: 'Эталонный триллер. Напряжение не спадает ни на минуту.' },
-];
-
 const GENRE_FILTER = ['Все жанры', ...ALL_GENRES];
 const NAV = [
   { id: 'home', label: 'Главная', icon: 'Clapperboard' },
@@ -64,7 +57,8 @@ const EMPTY_RATINGS: Ratings = { quality: 7, plot: 7, characters: 7, atmosphere:
 /* ═══════════════════ Main ═══════════════════ */
 const Index = () => {
   const [tab, setTab] = useState<Tab>('home');
-  const [movies, setMovies] = useState<Movie[]>(initialMovies);
+  const [movies, setMovies] = useState<Movie[]>([]);
+  const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState('');
   const [genre, setGenre] = useState('Все жанры');
   const [year, setYear] = useState('Все годы');
@@ -78,6 +72,16 @@ const Index = () => {
   const [showAdd, setShowAdd] = useState(false);
   const [editTarget, setEditTarget] = useState<Movie | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Movie | null>(null);
+
+  const loadMovies = useCallback(async () => {
+    setLoading(true);
+    const res = await fetch(API);
+    const data = await res.json();
+    setMovies(data);
+    setLoading(false);
+  }, []);
+
+  useEffect(() => { loadMovies(); }, [loadMovies]);
 
   const years = useMemo(
     () => ['Все годы', ...Array.from(new Set(movies.map((m) => m.year))).sort((a, b) => b - a).map(String)],
@@ -102,21 +106,42 @@ const Index = () => {
     setDraftReview(m.review);
   };
 
-  const saveRating = () => {
+  const saveRating = async () => {
     if (!active) return;
-    setMovies((prev) => prev.map((m) => m.id === active.id ? { ...m, myRatings: { ...draft }, review: draftReview } : m));
+    const updated = { ...active, myRatings: { ...draft }, review: draftReview };
+    await fetch(`${API}/${active.id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updated),
+    });
+    setMovies((prev) => prev.map((m) => m.id === active.id ? updated : m));
     setActive(null);
   };
 
-  const addMovie = (m: Movie) => { setMovies((prev) => [m, ...prev]); setShowAdd(false); };
+  const addMovie = async (m: Movie) => {
+    const res = await fetch(API, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(m),
+    });
+    const { id } = await res.json();
+    setMovies((prev) => [{ ...m, id }, ...prev]);
+    setShowAdd(false);
+  };
 
-  const saveEdit = (updated: Movie) => {
+  const saveEdit = async (updated: Movie) => {
+    await fetch(`${API}/${updated.id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updated),
+    });
     setMovies((prev) => prev.map((m) => m.id === updated.id ? updated : m));
     setEditTarget(null);
   };
 
-  const confirmDelete = () => {
+  const confirmDelete = async () => {
     if (!deleteTarget) return;
+    await fetch(`${API}/${deleteTarget.id}`, { method: 'DELETE' });
     setMovies((prev) => prev.filter((m) => m.id !== deleteTarget.id));
     setDeleteTarget(null);
   };
@@ -202,24 +227,41 @@ const Index = () => {
 
       {/* ── Grid ── */}
       <section className="container pt-8">
-        {tab === 'top' && filtered.length >= 3 && <Podium movies={filtered.slice(0, 3)} onRate={openRate} />}
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-5 mt-6">
-          {filtered.map((m, i) => (
-            <MovieCard
-              key={m.id}
-              movie={m}
-              rank={tab === 'top' ? i + 1 : undefined}
-              onRate={() => openRate(m)}
-              onEdit={() => setEditTarget(m)}
-              onDelete={() => setDeleteTarget(m)}
-            />
-          ))}
-        </div>
-        {filtered.length === 0 && (
-          <div className="text-center py-24 text-muted-foreground">
-            <Icon name="SearchX" size={48} className="mx-auto mb-4 opacity-40" />
-            <p>Ничего не найдено. Попробуй изменить фильтры.</p>
+        {loading ? (
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-5 mt-6">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <div key={i} className="rounded-2xl overflow-hidden bg-card border border-border/50 animate-pulse">
+                <div className="aspect-[2/3] bg-secondary/60" />
+                <div className="p-4 space-y-2">
+                  <div className="h-4 bg-secondary/80 rounded-lg w-3/4" />
+                  <div className="h-3 bg-secondary/60 rounded-lg w-1/2" />
+                  <div className="h-9 bg-secondary/60 rounded-xl mt-3" />
+                </div>
+              </div>
+            ))}
           </div>
+        ) : (
+          <>
+            {tab === 'top' && filtered.length >= 3 && <Podium movies={filtered.slice(0, 3)} onRate={openRate} />}
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-5 mt-6">
+              {filtered.map((m, i) => (
+                <MovieCard
+                  key={m.id}
+                  movie={m}
+                  rank={tab === 'top' ? i + 1 : undefined}
+                  onRate={() => openRate(m)}
+                  onEdit={() => setEditTarget(m)}
+                  onDelete={() => setDeleteTarget(m)}
+                />
+              ))}
+            </div>
+            {!loading && filtered.length === 0 && (
+              <div className="text-center py-24 text-muted-foreground">
+                <Icon name={movies.length === 0 ? 'FilmIcon' : 'SearchX'} fallback="SearchX" size={48} className="mx-auto mb-4 opacity-40" />
+                <p>{movies.length === 0 ? 'Коллекция пуста — добавь первый фильм!' : 'Ничего не найдено. Попробуй изменить фильтры.'}</p>
+              </div>
+            )}
+          </>
         )}
       </section>
 
